@@ -61,7 +61,7 @@ REM Verify pip actually works
 if !errorlevel! neq 0 goto err_python
 
 echo    Installing setuptools...
-"%PYTHON_EXE%" -m pip install setuptools wheel
+"%PYTHON_EXE%" -m pip install --prefer-binary setuptools wheel
 if !errorlevel! neq 0 goto err_python
 
 echo    [OK] Python %PYTHON_VERSION% installed
@@ -134,31 +134,76 @@ call "%NODE_DIR%\npm.cmd" install -g @mermaid-js/mermaid-cli --quiet 2>nul
 echo.
 
 REM ============================================
-REM  Step 4: MetaGPT
+REM  Step 4: Gradio WebUI (install FIRST)
 REM ============================================
+REM Install Gradio before MetaGPT deps to ensure Gradio's
+REM dependency tree is set up correctly and not broken by
+REM conflicting package versions from MetaGPT.
+
+"%PYTHON_EXE%" -c "import gradio" >nul 2>&1
+if !errorlevel! equ 0 goto gradio_ok
+
+echo [4/6] Installing WebUI (Gradio)...
+"%PYTHON_EXE%" -m pip install --prefer-binary gradio
+if !errorlevel! neq 0 goto err_gradio
+
+REM Verify Gradio import immediately after install
+"%PYTHON_EXE%" -c "import gradio; print('    Gradio', gradio.__version__, '- OK')"
+if !errorlevel! neq 0 (
+    echo    [WARN] Gradio import failed, attempting reinstall...
+    "%PYTHON_EXE%" -m pip install --prefer-binary --force-reinstall gradio
+    "%PYTHON_EXE%" -c "import gradio" >nul 2>&1
+    if !errorlevel! neq 0 goto err_gradio
+)
+
+echo    [OK] WebUI installed
+goto gradio_done
+
+:err_gradio
+echo [ERROR] Gradio install failed.
+echo    Showing error details:
+"%PYTHON_EXE%" -c "import gradio"
+pause
+exit /b 1
+
+:gradio_ok
+echo [4/6] WebUI (Gradio) - OK
+
+:gradio_done
+echo.
+
+REM ============================================
+REM  Step 5: MetaGPT + Dependencies
+REM ============================================
+REM MetaGPT is installed with --no-deps to avoid pulling
+REM conflicting versions. Then deps are installed manually
+REM with version pins to avoid breaking Gradio.
+
 "%PYTHON_EXE%" -c "import metagpt" >nul 2>&1
 if !errorlevel! equ 0 goto metagpt_ok
 
-echo [4/6] Installing MetaGPT...
+echo [5/6] Installing MetaGPT...
 
-echo    Installing metagpt package...
-"%PYTHON_EXE%" -m pip install metagpt --no-deps
+echo    Installing metagpt package (no-deps)...
+"%PYTHON_EXE%" -m pip install --prefer-binary metagpt --no-deps
 if !errorlevel! neq 0 goto err_metagpt
 
 echo    Installing core dependencies (1/3)...
-"%PYTHON_EXE%" -m pip install "pydantic>=2.5.3" openai anthropic httpx tenacity aiohttp pyyaml loguru rich typer fire tiktoken
+REM Pin numpy<2 - MetaGPT 0.8.x requires numpy<2.0
+REM Use --no-upgrade to avoid overwriting Gradio-provided packages
+"%PYTHON_EXE%" -m pip install --prefer-binary "pydantic>=2.5.3" "numpy<2" openai anthropic httpx tenacity aiohttp pyyaml loguru rich typer fire tiktoken
 if !errorlevel! neq 0 goto err_metagpt
 
 echo    Installing core dependencies (2/3)...
-"%PYTHON_EXE%" -m pip install networkx gitpython beautifulsoup4 lxml tqdm pandas libcst socksio retry ta nbclient nbformat ipython ipykernel
+"%PYTHON_EXE%" -m pip install --prefer-binary networkx gitpython beautifulsoup4 lxml tqdm "pandas<2.2" libcst socksio retry ta nbclient nbformat ipython ipykernel
 if !errorlevel! neq 0 goto err_metagpt
 
 echo    Installing optional dependencies (3/3)...
-"%PYTHON_EXE%" -m pip install scikit-learn --quiet 2>nul
-"%PYTHON_EXE%" -m pip install redis --quiet 2>nul
-"%PYTHON_EXE%" -m pip install boto3 --quiet 2>nul
-"%PYTHON_EXE%" -m pip install selenium webdriver-manager --quiet 2>nul
-"%PYTHON_EXE%" -m pip install zhipuai --quiet 2>nul
+"%PYTHON_EXE%" -m pip install --prefer-binary scikit-learn --quiet 2>nul
+"%PYTHON_EXE%" -m pip install --prefer-binary redis --quiet 2>nul
+"%PYTHON_EXE%" -m pip install --prefer-binary boto3 --quiet 2>nul
+"%PYTHON_EXE%" -m pip install --prefer-binary selenium webdriver-manager --quiet 2>nul
+"%PYTHON_EXE%" -m pip install --prefer-binary zhipuai --quiet 2>nul
 
 echo    [OK] MetaGPT installed
 goto metagpt_done
@@ -169,32 +214,9 @@ pause
 exit /b 1
 
 :metagpt_ok
-echo [4/6] MetaGPT - OK
+echo [5/6] MetaGPT - OK
 
 :metagpt_done
-echo.
-
-REM ============================================
-REM  Step 5: Gradio (WebUI)
-REM ============================================
-"%PYTHON_EXE%" -c "import gradio" >nul 2>&1
-if !errorlevel! equ 0 goto gradio_ok
-
-echo [5/6] Installing WebUI components...
-"%PYTHON_EXE%" -m pip install gradio pyyaml
-if !errorlevel! neq 0 goto err_gradio
-echo    [OK] WebUI installed
-goto gradio_done
-
-:err_gradio
-echo [ERROR] Gradio install failed.
-pause
-exit /b 1
-
-:gradio_ok
-echo [5/6] WebUI - OK
-
-:gradio_done
 echo.
 
 REM ============================================
@@ -215,9 +237,14 @@ echo.
 REM === Final verification ===
 echo Verifying installation...
 
-REM Check gradio (critical - WebUI needs it)
-"%PYTHON_EXE%" -c "import gradio; print('Gradio', gradio.__version__)" 2>nul
-if !errorlevel! neq 0 goto err_gradio_verify
+REM Re-verify Gradio after MetaGPT deps install (deps may have broken it)
+"%PYTHON_EXE%" -c "import gradio; print('  Gradio', gradio.__version__)" 2>nul
+if !errorlevel! neq 0 (
+    echo [WARN] MetaGPT deps broke Gradio. Repairing...
+    "%PYTHON_EXE%" -m pip install --prefer-binary --force-reinstall gradio
+    "%PYTHON_EXE%" -c "import gradio; print('  Gradio', gradio.__version__)" 2>nul
+    if !errorlevel! neq 0 goto err_gradio_verify
+)
 
 REM Check metagpt (non-critical for WebUI launch - just warn)
 "%PYTHON_EXE%" -c "import metagpt" 2>nul
@@ -225,7 +252,10 @@ if !errorlevel! neq 0 goto warn_metagpt
 goto verify_done
 
 :err_gradio_verify
-echo [ERROR] Gradio not found. Run clean.bat then start.bat again.
+echo [ERROR] Gradio not working. Showing error details:
+"%PYTHON_EXE%" -c "import gradio"
+echo.
+echo Try running clean.bat then start.bat again.
 pause
 exit /b 1
 
