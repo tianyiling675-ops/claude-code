@@ -1,12 +1,13 @@
 """MetaGPT WebUI - 可视化控制面板"""
 import gradio as gr
 import subprocess
-import threading
 import os
 import sys
-import yaml
-import time
-import glob
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
 
 # ============================================
 #  全局状态
@@ -31,10 +32,41 @@ LLM_PROVIDERS = {
 
 def load_config():
     """加载现有配置"""
-    if os.path.exists(CONFIG_FILE):
+    if not os.path.exists(CONFIG_FILE):
+        return {}
+    try:
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
-    return {}
+            text = f.read()
+        if yaml:
+            return yaml.safe_load(text) or {}
+        # Fallback: minimal parser for simple key: value YAML
+        return _parse_simple_yaml(text)
+    except Exception:
+        return {}
+
+
+def _parse_simple_yaml(text):
+    """Minimal YAML parser - handles only the simple config2.yaml format"""
+    result = {}
+    current_section = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if ":" not in stripped:
+            continue
+        key, _, value = stripped.partition(":")
+        key = key.strip()
+        value = value.strip()
+        if not value:
+            # Section header like "llm:"
+            result[key] = {}
+            current_section = key
+        elif current_section and line.startswith((" ", "\t")):
+            result[current_section][key] = value
+        else:
+            result[key] = value
+    return result
 
 
 def save_config(provider, api_key, model, base_url):
@@ -56,7 +88,14 @@ def save_config(provider, api_key, model, base_url):
     }
 
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+        if yaml:
+            yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
+        else:
+            # Fallback: write simple YAML manually
+            llm = config.get("llm", {})
+            f.write("llm:\n")
+            for k, v in llm.items():
+                f.write(f"  {k}: {v}\n")
 
     return f"配置已保存到 {CONFIG_FILE}"
 
@@ -216,7 +255,11 @@ def read_project_file(project_name, file_path):
         return "请选择项目和文件路径"
 
     clean_name = project_name.replace("📁 ", "").split("  (")[0].strip()
-    full_path = os.path.join(WORKSPACE_DIR, clean_name, file_path.strip())
+    full_path = os.path.normpath(os.path.join(WORKSPACE_DIR, clean_name, file_path.strip()))
+
+    # Prevent path traversal (e.g. ../../etc/passwd)
+    if not full_path.startswith(os.path.normpath(WORKSPACE_DIR)):
+        return "非法路径"
 
     if not os.path.exists(full_path):
         return f"文件不存在: {file_path}"
@@ -269,7 +312,10 @@ def create_ui():
                 stop_btn = gr.Button("⏹ 停止", variant="stop", scale=1)
 
             status_output = gr.Textbox(label="状态", interactive=False)
-            log_output = gr.Textbox(label="运行日志", lines=20, interactive=False, autoscroll=True)
+            try:
+                log_output = gr.Textbox(label="运行日志", lines=20, interactive=False, autoscroll=True)
+            except TypeError:
+                log_output = gr.Textbox(label="运行日志", lines=20, interactive=False)
 
             run_btn.click(
                 run_metagpt,

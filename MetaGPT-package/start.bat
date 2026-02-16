@@ -20,8 +20,15 @@ set PYTHON_DIR=%~dp0runtime\python
 set PYTHON_EXE=%PYTHON_DIR%\python.exe
 set PTH_FILE=%PYTHON_DIR%\python310._pth
 
-if exist "%PYTHON_EXE%" goto python_ok
+if not exist "%PYTHON_EXE%" goto python_install
 
+REM Python exists - but verify pip works (may be broken from previous run)
+"%PYTHON_EXE%" -m pip --version >nul 2>&1
+if !errorlevel! equ 0 goto python_ok
+echo [1/6] Python found but pip broken, fixing...
+goto fix_pth
+
+:python_install
 echo [1/6] Downloading Python %PYTHON_VERSION% ...
 curl -L --progress-bar -o "%~dp0runtime\python.zip" "https://www.python.org/ftp/python/%PYTHON_VERSION%/python-%PYTHON_VERSION%-embed-amd64.zip"
 if !errorlevel! neq 0 goto err_python
@@ -30,23 +37,39 @@ echo    Extracting...
 powershell -Command "Expand-Archive -Path '%~dp0runtime\python.zip' -DestinationPath '%PYTHON_DIR%' -Force"
 del "%~dp0runtime\python.zip" 2>nul
 
-REM Enable pip (only append once)
-findstr /c:"import site" "%PTH_FILE%" >nul 2>&1
+:fix_pth
+REM *** CRITICAL: Enable site-packages in embedded Python ***
+REM The default ._pth has "#import site" (commented out).
+REM Step A: Uncomment it using powershell regex
+powershell -Command "if(Test-Path '%PTH_FILE%'){(Get-Content '%PTH_FILE%') -replace '^#import site','import site' | Set-Content '%PTH_FILE%'}"
+REM Step B: If "import site" still not there as a whole line, append it
+findstr /x /c:"import site" "%PTH_FILE%" >nul 2>&1
 if !errorlevel! neq 0 echo import site>> "%PTH_FILE%"
+
+REM Verify site-packages works
+"%PYTHON_EXE%" -c "import site; print(site.getsitepackages())" >nul 2>&1
+if !errorlevel! neq 0 goto err_python
 
 echo    Installing pip...
 curl -sL -o "%PYTHON_DIR%\get-pip.py" "https://bootstrap.pypa.io/get-pip.py"
-"%PYTHON_EXE%" "%PYTHON_DIR%\get-pip.py" --quiet
+"%PYTHON_EXE%" "%PYTHON_DIR%\get-pip.py"
+if !errorlevel! neq 0 goto err_python
 del "%PYTHON_DIR%\get-pip.py" 2>nul
 
+REM Verify pip actually works
+"%PYTHON_EXE%" -m pip --version >nul 2>&1
+if !errorlevel! neq 0 goto err_python
+
 echo    Installing setuptools...
-"%PYTHON_EXE%" -m pip install setuptools wheel --quiet
+"%PYTHON_EXE%" -m pip install setuptools wheel
+if !errorlevel! neq 0 goto err_python
 
 echo    [OK] Python %PYTHON_VERSION% installed
 goto python_done
 
 :err_python
-echo [ERROR] Python download failed. Check your network.
+echo [ERROR] Python setup failed.
+echo    Run clean.bat and try again.
 pause
 exit /b 1
 
@@ -112,9 +135,6 @@ echo.
 
 REM ============================================
 REM  Step 4: MetaGPT
-REM  Use pip --no-deps to skip resolution, then
-REM  install core deps separately (avoids
-REM  resolution-too-deep error)
 REM ============================================
 "%PYTHON_EXE%" -c "import metagpt" >nul 2>&1
 if !errorlevel! equ 0 goto metagpt_ok
@@ -133,9 +153,12 @@ echo    Installing core dependencies (2/3)...
 "%PYTHON_EXE%" -m pip install networkx gitpython beautifulsoup4 lxml tqdm pandas libcst socksio retry ta nbclient nbformat ipython ipykernel
 if !errorlevel! neq 0 goto err_metagpt
 
-echo    Installing core dependencies (3/3)...
-"%PYTHON_EXE%" -m pip install scikit-learn redis boto3 zhipuai connexion qdrant-client lancedb selenium webdriver-manager
-if !errorlevel! neq 0 echo    [WARNING] Some optional deps failed, continuing...
+echo    Installing optional dependencies (3/3)...
+"%PYTHON_EXE%" -m pip install scikit-learn --quiet 2>nul
+"%PYTHON_EXE%" -m pip install redis --quiet 2>nul
+"%PYTHON_EXE%" -m pip install boto3 --quiet 2>nul
+"%PYTHON_EXE%" -m pip install selenium webdriver-manager --quiet 2>nul
+"%PYTHON_EXE%" -m pip install zhipuai --quiet 2>nul
 
 echo    [OK] MetaGPT installed
 goto metagpt_done
@@ -190,8 +213,11 @@ echo    Config found: %CONFIG_DIR%\config2.yaml
 echo.
 
 REM === Final verification ===
-"%PYTHON_EXE%" -c "import metagpt; import gradio" >nul 2>&1
+echo Verifying installation...
+"%PYTHON_EXE%" -c "import metagpt; import gradio; print('OK')" >nul 2>&1
 if !errorlevel! neq 0 goto err_final
+echo All good!
+echo.
 goto launch
 
 :err_final
