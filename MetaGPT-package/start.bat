@@ -13,7 +13,7 @@ REM === Create runtime directory ===
 if not exist "%~dp0runtime" mkdir "%~dp0runtime"
 
 REM ============================================
-REM  Step 1: Python Embedded (3.10 - best compat)
+REM  Step 1: Python Embedded (3.10)
 REM ============================================
 set PYTHON_VERSION=3.10.11
 set PYTHON_DIR=%~dp0runtime\python
@@ -22,7 +22,7 @@ set PTH_FILE=%PYTHON_DIR%\python310._pth
 
 if exist "%PYTHON_EXE%" goto python_ok
 
-echo [1/7] Downloading Python %PYTHON_VERSION% ...
+echo [1/6] Downloading Python %PYTHON_VERSION% ...
 curl -L --progress-bar -o "%~dp0runtime\python.zip" "https://www.python.org/ftp/python/%PYTHON_VERSION%/python-%PYTHON_VERSION%-embed-amd64.zip"
 if !errorlevel! neq 0 goto err_python
 if not exist "%PYTHON_DIR%" mkdir "%PYTHON_DIR%"
@@ -30,7 +30,7 @@ echo    Extracting...
 powershell -Command "Expand-Archive -Path '%~dp0runtime\python.zip' -DestinationPath '%PYTHON_DIR%' -Force"
 del "%~dp0runtime\python.zip" 2>nul
 
-REM Enable pip: append "import site" to ._pth (only if not already there)
+REM Enable pip (only append once)
 findstr /c:"import site" "%PTH_FILE%" >nul 2>&1
 if !errorlevel! neq 0 echo import site>> "%PTH_FILE%"
 
@@ -39,7 +39,6 @@ curl -sL -o "%PYTHON_DIR%\get-pip.py" "https://bootstrap.pypa.io/get-pip.py"
 "%PYTHON_EXE%" "%PYTHON_DIR%\get-pip.py" --quiet
 del "%PYTHON_DIR%\get-pip.py" 2>nul
 
-REM Install setuptools + wheel (needed for building some packages)
 echo    Installing setuptools...
 "%PYTHON_EXE%" -m pip install setuptools wheel --quiet
 
@@ -52,7 +51,7 @@ pause
 exit /b 1
 
 :python_ok
-echo [1/7] Python %PYTHON_VERSION% - OK
+echo [1/6] Python %PYTHON_VERSION% - OK
 
 :python_done
 echo.
@@ -65,7 +64,7 @@ set NODE_DIR=%~dp0runtime\node
 
 if exist "%NODE_DIR%\node.exe" goto node_ok
 
-echo [2/7] Downloading Node.js %NODE_VERSION% ...
+echo [2/6] Downloading Node.js %NODE_VERSION% ...
 curl -L --progress-bar -o "%~dp0runtime\node.zip" "https://nodejs.org/dist/v%NODE_VERSION%/node-v%NODE_VERSION%-win-x64.zip"
 if !errorlevel! neq 0 goto err_node
 if not exist "%NODE_DIR%" mkdir "%NODE_DIR%"
@@ -83,55 +82,26 @@ pause
 exit /b 1
 
 :node_ok
-echo [2/7] Node.js %NODE_VERSION% - OK
+echo [2/6] Node.js %NODE_VERSION% - OK
 
 :node_done
 set PATH=%NODE_DIR%;%NODE_DIR%\node_modules\.bin;%PATH%
-REM Set npm global prefix to portable node dir
 call "%NODE_DIR%\npm.cmd" config set prefix "%NODE_DIR%" >nul 2>&1
 echo.
 
 REM ============================================
-REM  Step 3: uv (fast Python package manager)
-REM ============================================
-set UV_EXE=%~dp0runtime\uv.exe
-
-if exist "%UV_EXE%" goto uv_ok
-
-echo [3/7] Downloading uv package manager...
-curl -sL -o "%~dp0runtime\uv.zip" "https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip"
-if !errorlevel! neq 0 goto err_uv
-powershell -Command "Expand-Archive -Path '%~dp0runtime\uv.zip' -DestinationPath '%~dp0runtime\uv-temp' -Force"
-copy "%~dp0runtime\uv-temp\uv.exe" "%UV_EXE%" >nul 2>&1
-rmdir /s /q "%~dp0runtime\uv-temp" 2>nul
-del "%~dp0runtime\uv.zip" 2>nul
-echo    [OK] uv installed
-goto uv_done
-
-:err_uv
-echo [WARNING] uv download failed, will use pip as fallback.
-goto uv_done
-
-:uv_ok
-echo [3/7] uv - OK
-
-:uv_done
-echo.
-
-REM ============================================
-REM  Step 4: pnpm + mermaid-cli
+REM  Step 3: pnpm + mermaid-cli
 REM ============================================
 where pnpm >nul 2>&1
 if !errorlevel! equ 0 goto pnpm_ok
 
-echo [4/7] Installing pnpm...
+echo [3/6] Installing pnpm...
 call "%NODE_DIR%\npm.cmd" install -g pnpm --quiet 2>nul
 echo    [OK] pnpm installed
 
 :pnpm_ok
-echo [4/7] pnpm - OK
+echo [3/6] pnpm - OK
 
-REM Install mermaid-cli (MetaGPT uses it for diagrams)
 where mmdc >nul 2>&1
 if !errorlevel! equ 0 goto mermaid_ok
 echo    Installing mermaid-cli (for diagrams)...
@@ -141,34 +111,32 @@ call "%NODE_DIR%\npm.cmd" install -g @mermaid-js/mermaid-cli --quiet 2>nul
 echo.
 
 REM ============================================
-REM  Step 5: MetaGPT
+REM  Step 4: MetaGPT
+REM  Use pip --no-deps to skip resolution, then
+REM  install core deps separately (avoids
+REM  resolution-too-deep error)
 REM ============================================
 "%PYTHON_EXE%" -c "import metagpt" >nul 2>&1
 if !errorlevel! equ 0 goto metagpt_ok
 
-echo [5/7] Installing MetaGPT (this may take a few minutes)...
+echo [4/6] Installing MetaGPT...
 
-REM Try uv first (much faster, handles complex deps better)
-if not exist "%UV_EXE%" goto metagpt_pip
-echo    Using uv for fast installation...
-"%UV_EXE%" pip install metagpt --python "%PYTHON_EXE%"
-REM Verify uv actually installed to the right place
-"%PYTHON_EXE%" -c "import metagpt" >nul 2>&1
-if !errorlevel! equ 0 goto metagpt_installed
-echo    uv installed but Python can't find it, reinstalling with pip...
-
-:metagpt_pip
-REM Fallback: pip (always installs to the correct site-packages)
-"%PYTHON_EXE%" -m pip install metagpt
-if !errorlevel! equ 0 goto metagpt_installed
-
-REM Last resort: pip with --no-deps + manual core deps
-echo    Standard install failed, trying minimal install...
-"%PYTHON_EXE%" -m pip install metagpt --no-deps --quiet
-"%PYTHON_EXE%" -m pip install openai anthropic pydantic typer fire aiohttp loguru rich tenacity tiktoken pyyaml networkx gitpython nbclient nbformat ipython ipykernel scikit-learn beautifulsoup4 lxml retry ta libcst socksio tqdm pandas --quiet
+echo    Installing metagpt package...
+"%PYTHON_EXE%" -m pip install metagpt --no-deps
 if !errorlevel! neq 0 goto err_metagpt
 
-:metagpt_installed
+echo    Installing core dependencies (1/3)...
+"%PYTHON_EXE%" -m pip install "pydantic>=2.5.3" openai anthropic httpx tenacity aiohttp pyyaml loguru rich typer fire tiktoken
+if !errorlevel! neq 0 goto err_metagpt
+
+echo    Installing core dependencies (2/3)...
+"%PYTHON_EXE%" -m pip install networkx gitpython beautifulsoup4 lxml tqdm pandas libcst socksio retry ta nbclient nbformat ipython ipykernel
+if !errorlevel! neq 0 goto err_metagpt
+
+echo    Installing core dependencies (3/3)...
+"%PYTHON_EXE%" -m pip install scikit-learn redis boto3 zhipuai connexion qdrant-client lancedb selenium webdriver-manager
+if !errorlevel! neq 0 echo    [WARNING] Some optional deps failed, continuing...
+
 echo    [OK] MetaGPT installed
 goto metagpt_done
 
@@ -178,35 +146,38 @@ pause
 exit /b 1
 
 :metagpt_ok
-echo [5/7] MetaGPT - OK
+echo [4/6] MetaGPT - OK
 
 :metagpt_done
 echo.
 
 REM ============================================
-REM  Step 6: Gradio (WebUI)
-REM  ALWAYS use pip here (uv installs to wrong
-REM  path for embedded Python)
+REM  Step 5: Gradio (WebUI)
 REM ============================================
 "%PYTHON_EXE%" -c "import gradio" >nul 2>&1
 if !errorlevel! equ 0 goto gradio_ok
 
-echo [6/7] Installing WebUI components...
-"%PYTHON_EXE%" -m pip install gradio pyyaml --quiet
+echo [5/6] Installing WebUI components...
+"%PYTHON_EXE%" -m pip install gradio pyyaml
+if !errorlevel! neq 0 goto err_gradio
 echo    [OK] WebUI installed
-
 goto gradio_done
 
+:err_gradio
+echo [ERROR] Gradio install failed.
+pause
+exit /b 1
+
 :gradio_ok
-echo [6/7] WebUI - OK
+echo [5/6] WebUI - OK
 
 :gradio_done
 echo.
 
 REM ============================================
-REM  Step 7: Check config
+REM  Step 6: Check config
 REM ============================================
-echo [7/7] Checking config...
+echo [6/6] Checking config...
 set CONFIG_DIR=%USERPROFILE%\.metagpt
 if exist "%CONFIG_DIR%\config2.yaml" goto config_ok
 echo    First run - please set your API Key in the Settings tab.
@@ -218,28 +189,17 @@ echo    Config found: %CONFIG_DIR%\config2.yaml
 :config_done
 echo.
 
-REM ============================================
-REM  Pre-launch verification
-REM ============================================
-"%PYTHON_EXE%" -c "import gradio" >nul 2>&1
-if !errorlevel! equ 0 goto verify_ok
-echo [ERROR] gradio not found. Trying to reinstall...
-"%PYTHON_EXE%" -m pip install gradio pyyaml
-"%PYTHON_EXE%" -c "import gradio" >nul 2>&1
-if !errorlevel! neq 0 goto err_verify
-:verify_ok
-
+REM === Final verification ===
+"%PYTHON_EXE%" -c "import metagpt; import gradio" >nul 2>&1
+if !errorlevel! neq 0 goto err_final
 goto launch
 
-:err_verify
-echo [ERROR] WebUI components could not be installed.
-echo    Try running clean.bat and then start.bat again.
+:err_final
+echo [ERROR] Installation incomplete.
+echo    Run clean.bat first, then start.bat again.
 pause
 exit /b 1
 
-REM ============================================
-REM  Launch WebUI
-REM ============================================
 :launch
 echo ============================================
 echo   Starting MetaGPT WebUI...
