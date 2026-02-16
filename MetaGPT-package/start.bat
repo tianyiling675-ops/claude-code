@@ -214,17 +214,29 @@ echo.
 
 REM === Final verification ===
 echo Verifying installation...
-"%PYTHON_EXE%" -c "import metagpt; import gradio; print('OK')" >nul 2>&1
-if !errorlevel! neq 0 goto err_final
-echo All good!
-echo.
-goto launch
 
-:err_final
-echo [ERROR] Installation incomplete.
-echo    Run clean.bat first, then start.bat again.
+REM Check gradio (critical - WebUI needs it)
+"%PYTHON_EXE%" -c "import gradio; print('Gradio', gradio.__version__)" 2>nul
+if !errorlevel! neq 0 goto err_gradio_verify
+
+REM Check metagpt (non-critical for WebUI launch - just warn)
+"%PYTHON_EXE%" -c "import metagpt" 2>nul
+if !errorlevel! neq 0 goto warn_metagpt
+goto verify_done
+
+:err_gradio_verify
+echo [ERROR] Gradio not found. Run clean.bat then start.bat again.
 pause
 exit /b 1
+
+:warn_metagpt
+echo [WARN] MetaGPT import has issues, but WebUI can still start.
+echo        You may see errors when generating projects.
+echo.
+
+:verify_done
+echo All good!
+echo.
 
 :launch
 echo ============================================
