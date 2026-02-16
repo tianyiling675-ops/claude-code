@@ -13,12 +13,12 @@ REM === Create runtime directory ===
 if not exist "%~dp0runtime" mkdir "%~dp0runtime"
 
 REM ============================================
-REM  Step 1: Python Embedded
+REM  Step 1: Python Embedded (3.10 - best compat)
 REM ============================================
-set PYTHON_VERSION=3.11.9
+set PYTHON_VERSION=3.10.11
 set PYTHON_DIR=%~dp0runtime\python
 set PYTHON_EXE=%PYTHON_DIR%\python.exe
-set PTH_FILE=%PYTHON_DIR%\python311._pth
+set PTH_FILE=%PYTHON_DIR%\python310._pth
 
 if exist "%PYTHON_EXE%" goto python_ok
 
@@ -38,6 +38,11 @@ echo    Installing pip...
 curl -sL -o "%PYTHON_DIR%\get-pip.py" "https://bootstrap.pypa.io/get-pip.py"
 "%PYTHON_EXE%" "%PYTHON_DIR%\get-pip.py" --quiet
 del "%PYTHON_DIR%\get-pip.py" 2>nul
+
+REM Install setuptools + wheel (needed for building some packages)
+echo    Installing setuptools...
+"%PYTHON_EXE%" -m pip install setuptools wheel --quiet
+
 echo    [OK] Python %PYTHON_VERSION% installed
 goto python_done
 
@@ -148,13 +153,17 @@ if exist "%UV_EXE%" (
     echo    Using uv for fast installation...
     "%UV_EXE%" pip install metagpt --python "%PYTHON_EXE%"
     if !errorlevel! equ 0 goto metagpt_installed
-    echo    uv failed, trying pip...
+    echo    uv failed, trying pip fallback...
 )
 
-REM Fallback: pip with --no-deps + manual core deps
-echo    Installing MetaGPT core...
+REM Fallback: pip
+"%PYTHON_EXE%" -m pip install metagpt
+if !errorlevel! equ 0 goto metagpt_installed
+
+REM Last resort: pip with --no-deps + manual core deps
+echo    Standard install failed, trying minimal install...
 "%PYTHON_EXE%" -m pip install metagpt --no-deps --quiet
-"%PYTHON_EXE%" -m pip install openai anthropic pydantic typer fire aiohttp loguru rich tenacity tiktoken pyyaml networkx gitpython nbclient nbformat ipython ipykernel scikit-learn beautifulsoup4 lxml retry ta libcst socksio httpx[socks] tqdm --quiet
+"%PYTHON_EXE%" -m pip install openai anthropic pydantic typer fire aiohttp loguru rich tenacity tiktoken pyyaml networkx gitpython nbclient nbformat ipython ipykernel scikit-learn beautifulsoup4 lxml retry ta libcst socksio tqdm pandas --quiet
 if !errorlevel! neq 0 goto err_metagpt
 
 :metagpt_installed

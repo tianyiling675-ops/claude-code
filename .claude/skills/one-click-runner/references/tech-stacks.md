@@ -31,30 +31,45 @@
 
 ### Embedded Python (Recommended for Python projects)
 
+**CRITICAL: Use Python 3.10 (not 3.11+) for best wheel compatibility.** Many packages (e.g. pandas pinned versions) only have pre-built wheels for 3.10. Python 3.11+ forces source builds that fail without MSVC.
+
+**CRITICAL: Use `goto` flow control, NOT `if ( )` blocks.** Chinese/UTF-8 characters inside `( )` blocks corrupt Windows CMD parsing. Always use `if ... goto label` pattern.
+
+**CRITICAL: Use `uv` instead of `pip` for complex projects.** pip's dependency resolver fails (`resolution-too-deep`) on projects with 50+ pinned dependencies. Download standalone `uv.exe` from GitHub releases.
+
 ```bat
 @echo off
-set PYTHON_VERSION=3.11.9
+set PYTHON_VERSION=3.10.11
 set PYTHON_DIR=%~dp0runtime\python
+set PYTHON_EXE=%PYTHON_DIR%\python.exe
+set PTH_FILE=%PYTHON_DIR%\python310._pth
 
-if not exist "%PYTHON_DIR%\python.exe" (
-    echo Downloading Python %PYTHON_VERSION%...
-    curl -L -o python.zip "https://www.python.org/ftp/python/%PYTHON_VERSION%/python-%PYTHON_VERSION%-embed-amd64.zip"
-    mkdir "%PYTHON_DIR%" 2>nul
-    powershell -Command "Expand-Archive -Path python.zip -DestinationPath '%PYTHON_DIR%' -Force"
-    del python.zip
+if exist "%PYTHON_EXE%" goto python_ok
+echo Downloading Python %PYTHON_VERSION%...
+curl -L -o "%~dp0runtime\python.zip" "https://www.python.org/ftp/python/%PYTHON_VERSION%/python-%PYTHON_VERSION%-embed-amd64.zip"
+mkdir "%PYTHON_DIR%" 2>nul
+powershell -Command "Expand-Archive -Path '%~dp0runtime\python.zip' -DestinationPath '%PYTHON_DIR%' -Force"
+del "%~dp0runtime\python.zip" 2>nul
 
-    REM Enable pip in embedded Python
-    echo import site>> "%PYTHON_DIR%\python311._pth"
-    curl -L -o "%PYTHON_DIR%\get-pip.py" https://bootstrap.pypa.io/get-pip.py
-    "%PYTHON_DIR%\python.exe" "%PYTHON_DIR%\get-pip.py"
-)
+REM Enable pip (only append once)
+findstr /c:"import site" "%PTH_FILE%" >nul 2>&1
+if !errorlevel! neq 0 echo import site>> "%PTH_FILE%"
+curl -sL -o "%PYTHON_DIR%\get-pip.py" "https://bootstrap.pypa.io/get-pip.py"
+"%PYTHON_EXE%" "%PYTHON_DIR%\get-pip.py" --quiet
+del "%PYTHON_DIR%\get-pip.py" 2>nul
+
+REM MUST install setuptools (provides pkg_resources needed by many setup.py)
+"%PYTHON_EXE%" -m pip install setuptools wheel --quiet
+:python_ok
 ```
 
 **Important notes for embedded Python:**
-- Must uncomment `import site` in `python3XX._pth` file to enable pip
-- The `._pth` filename matches Python version (e.g. `python311._pth` for 3.11)
+- Use Python 3.10.x for maximum pre-built wheel availability
+- Must add `import site` to `python3XX._pth` file to enable pip (use `findstr` to avoid duplicates)
+- The `._pth` filename matches Python version (e.g. `python310._pth` for 3.10)
+- ALWAYS install `setuptools` and `wheel` after pip — embedded Python lacks them and many packages need `pkg_resources` for building
 - Virtual environments don't work with embedded Python; install packages directly
-- Use `"%PYTHON_DIR%\python.exe" -m pip install -r requirements.txt`
+- Use `uv pip install <pkg> --python "%PYTHON_EXE%"` for complex dependency resolution, fallback to pip
 
 ### Portable Node.js (Recommended for Node.js projects)
 
