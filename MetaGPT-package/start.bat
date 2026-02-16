@@ -149,14 +149,16 @@ if !errorlevel! equ 0 goto metagpt_ok
 echo [5/7] Installing MetaGPT (this may take a few minutes)...
 
 REM Try uv first (much faster, handles complex deps better)
-if exist "%UV_EXE%" (
-    echo    Using uv for fast installation...
-    "%UV_EXE%" pip install metagpt --python "%PYTHON_EXE%"
-    if !errorlevel! equ 0 goto metagpt_installed
-    echo    uv failed, trying pip fallback...
-)
+if not exist "%UV_EXE%" goto metagpt_pip
+echo    Using uv for fast installation...
+"%UV_EXE%" pip install metagpt --python "%PYTHON_EXE%"
+REM Verify uv actually installed to the right place
+"%PYTHON_EXE%" -c "import metagpt" >nul 2>&1
+if !errorlevel! equ 0 goto metagpt_installed
+echo    uv installed but Python can't find it, reinstalling with pip...
 
-REM Fallback: pip
+:metagpt_pip
+REM Fallback: pip (always installs to the correct site-packages)
 "%PYTHON_EXE%" -m pip install metagpt
 if !errorlevel! equ 0 goto metagpt_installed
 
@@ -183,16 +185,14 @@ echo.
 
 REM ============================================
 REM  Step 6: Gradio (WebUI)
+REM  ALWAYS use pip here (uv installs to wrong
+REM  path for embedded Python)
 REM ============================================
 "%PYTHON_EXE%" -c "import gradio" >nul 2>&1
 if !errorlevel! equ 0 goto gradio_ok
 
 echo [6/7] Installing WebUI components...
-if exist "%UV_EXE%" (
-    "%UV_EXE%" pip install gradio pyyaml --python "%PYTHON_EXE%" --quiet
-) else (
-    "%PYTHON_EXE%" -m pip install gradio pyyaml --quiet
-)
+"%PYTHON_EXE%" -m pip install gradio pyyaml --quiet
 echo    [OK] WebUI installed
 
 goto gradio_done
@@ -219,8 +219,28 @@ echo    Config found: %CONFIG_DIR%\config2.yaml
 echo.
 
 REM ============================================
+REM  Pre-launch verification
+REM ============================================
+"%PYTHON_EXE%" -c "import gradio" >nul 2>&1
+if !errorlevel! equ 0 goto verify_ok
+echo [ERROR] gradio not found. Trying to reinstall...
+"%PYTHON_EXE%" -m pip install gradio pyyaml
+"%PYTHON_EXE%" -c "import gradio" >nul 2>&1
+if !errorlevel! neq 0 goto err_verify
+:verify_ok
+
+goto launch
+
+:err_verify
+echo [ERROR] WebUI components could not be installed.
+echo    Try running clean.bat and then start.bat again.
+pause
+exit /b 1
+
+REM ============================================
 REM  Launch WebUI
 REM ============================================
+:launch
 echo ============================================
 echo   Starting MetaGPT WebUI...
 echo   Browser will open automatically.
