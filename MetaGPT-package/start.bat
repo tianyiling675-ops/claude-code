@@ -190,8 +190,9 @@ if !errorlevel! neq 0 goto err_metagpt
 
 echo    Installing core dependencies (1/3)...
 REM Pin numpy<2 - MetaGPT 0.8.x requires numpy<2.0
-REM Use --no-upgrade to avoid overwriting Gradio-provided packages
-"%PYTHON_EXE%" -m pip install --prefer-binary "pydantic>=2.5.3" "numpy<2" openai anthropic httpx tenacity aiohttp pyyaml loguru rich typer fire tiktoken
+REM Pin websocket-client~=1.8.0 - MetaGPT 0.8.x requires this version
+REM semantic-kernel is required by metagpt._compat
+"%PYTHON_EXE%" -m pip install --prefer-binary "pydantic>=2.5.3" "numpy<2" openai anthropic httpx tenacity aiohttp pyyaml loguru rich typer fire tiktoken "websocket-client>=1.8.0,<1.9.0" semantic-kernel
 if !errorlevel! neq 0 goto err_metagpt
 
 echo    Installing core dependencies (2/3)...

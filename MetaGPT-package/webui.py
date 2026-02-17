@@ -4,6 +4,9 @@ import subprocess
 import os
 import sys
 
+# Detect Gradio major version for API compatibility
+_GRADIO_MAJOR = int(gr.__version__.split(".")[0]) if hasattr(gr, "__version__") else 4
+
 try:
     import yaml
 except ImportError:
@@ -277,15 +280,28 @@ def read_project_file(project_name, file_path):
 # ============================================
 #  Gradio UI
 # ============================================
+CUSTOM_CSS = """
+.main-title { text-align: center; margin-bottom: 0; }
+.sub-title { text-align: center; color: #666; margin-top: 0; }
+"""
+
+
 def create_ui():
-    with gr.Blocks(
-        title="MetaGPT 控制面板",
-        theme=gr.themes.Soft(),
-        css="""
-        .main-title { text-align: center; margin-bottom: 0; }
-        .sub-title { text-align: center; color: #666; margin-top: 0; }
-        """
-    ) as app:
+    # Gradio 6.0 deprecated theme/css in Blocks constructor
+    if _GRADIO_MAJOR >= 6:
+        block_kwargs = {"title": "MetaGPT 控制面板"}
+    else:
+        block_kwargs = {
+            "title": "MetaGPT 控制面板",
+            "theme": gr.themes.Soft(),
+            "css": CUSTOM_CSS,
+        }
+
+    with gr.Blocks(**block_kwargs) as app:
+
+        # Inject CSS via HTML for Gradio 6.x
+        if _GRADIO_MAJOR >= 6:
+            gr.HTML(f"<style>{CUSTOM_CSS}</style>")
 
         gr.Markdown("# 🤖 MetaGPT 控制面板", elem_classes="main-title")
         gr.Markdown("多智能体协作框架 — 输入你的想法，AI 团队帮你写代码", elem_classes="sub-title")
