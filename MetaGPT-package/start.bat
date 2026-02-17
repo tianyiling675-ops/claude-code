@@ -188,11 +188,17 @@ echo    Installing metagpt package (no-deps)...
 "%PYTHON_EXE%" -m pip install --prefer-binary metagpt --no-deps
 if !errorlevel! neq 0 goto err_metagpt
 
+echo    Creating semantic_kernel stub...
+REM MetaGPT 0.8.2 _compat.py does: from semantic_kernel.orchestration import sk_function
+REM This is only for side-effects (Windows asyncio event loop fix), not actual usage.
+REM The original requirement was semantic-kernel==0.4.3.dev0 (old dev pre-release),
+REM which conflicts with modern packages. A minimal stub satisfies the import.
+"%PYTHON_EXE%" -c "import site,os;sp=site.getsitepackages()[0];b=os.path.join(sp,'semantic_kernel');o=os.path.join(b,'orchestration');os.makedirs(o,exist_ok=True);[open(os.path.join(*p),'a').close() for p in [(b,'__init__.py'),(o,'__init__.py'),(o,'sk_function.py')]];print('    [OK] semantic_kernel stub created')"
+
 echo    Installing core dependencies (1/3)...
 REM Pin numpy<2 - MetaGPT 0.8.x requires numpy<2.0
-REM Pin websocket-client~=1.8.0 - MetaGPT 0.8.x requires this version
-REM semantic-kernel is required by metagpt._compat
-"%PYTHON_EXE%" -m pip install --prefer-binary "pydantic>=2.5.3" "numpy<2" openai anthropic httpx tenacity aiohttp pyyaml loguru rich typer fire tiktoken "websocket-client>=1.8.0,<1.9.0" semantic-kernel
+REM Pin websocket-client - MetaGPT 0.8.x requires ~=1.8.0
+"%PYTHON_EXE%" -m pip install --prefer-binary "pydantic>=2.5.3" "numpy<2" openai anthropic httpx tenacity aiohttp pyyaml loguru rich typer fire tiktoken "websocket-client>=1.8.0,<1.9.0"
 if !errorlevel! neq 0 goto err_metagpt
 
 echo    Installing core dependencies (2/3)...
