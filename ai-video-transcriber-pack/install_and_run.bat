@@ -2,19 +2,19 @@
 title AI Video Transcriber
 
 echo ============================================
-echo   AI Video Transcriber 一键整合包
-echo   AI 驱动的视频转录与智能摘要工具
+echo   AI Video Transcriber - One-Click Installer
+echo   Video Transcription and AI Summary Tool
 echo ============================================
 echo.
 
 :: ============================================
-:: 第一步：检测 Python 和 FFmpeg
+:: Step 1: Check Python, Git, and FFmpeg
 :: ============================================
 
 set "PYTHON_CMD="
 set "NEED_RESTART=0"
 
-:: 检测 Python（优先 py launcher，再 fallback python 命令）
+:: Check Python (try py launcher first, then fallback to python)
 py -3 --version >nul 2>&1
 if not errorlevel 1 (
     set "PYTHON_CMD=py -3"
@@ -33,170 +33,195 @@ if not errorlevel 1 (
 
 :python_found
 if not defined PYTHON_CMD (
-    echo [提示] 未检测到 Python，正在为您自动安装 Python 3.11...
-    echo        这需要大约 1-2 分钟，请耐心等待。
+    echo [INFO] Python not found. Installing Python 3.11 automatically...
+    echo        This may take 1-2 minutes, please wait.
     echo.
     winget install -e --id Python.Python.3.11 --accept-source-agreements --accept-package-agreements
     if errorlevel 1 (
         echo.
-        echo [错误] 自动安装 Python 失败。
-        echo 请手动去 https://www.python.org/downloads/ 下载安装。
-        echo 安装时记得勾选最下面的 "Add Python to PATH"！
-        echo 安装完成后，重新双击本程序。
+        echo [ERROR] Failed to install Python automatically.
+        echo Please download and install manually from https://www.python.org/downloads/
+        echo IMPORTANT: Check "Add Python to PATH" during installation!
+        echo After installation, double-click this file again.
         pause
         exit /b 1
     )
     echo.
-    echo [完成] Python 安装成功！
+    echo [OK] Python installed successfully!
     set "NEED_RESTART=1"
 ) else (
-    echo [√] 已检测到 Python
+    echo [OK] Python detected
     for /f "tokens=*" %%v in ('%PYTHON_CMD% --version 2^>^&1') do echo     %%v
 )
 echo.
 
-:: 检测 FFmpeg
-ffmpeg -version >nul 2>&1
+:: Check Git
+git --version >nul 2>&1
 if errorlevel 1 (
-    echo [提示] 未检测到 FFmpeg（视频音频处理必需），正在为您自动安装...
+    echo [INFO] Git not found. Installing Git automatically...
     echo.
-    winget install -e --id Gyan.FFmpeg --accept-source-agreements --accept-package-agreements
+    winget install -e --id Git.Git --accept-source-agreements --accept-package-agreements
     if errorlevel 1 (
         echo.
-        echo [错误] 自动安装 FFmpeg 失败。
-        echo 请手动去 https://ffmpeg.org/download.html 下载安装，
-        echo 并确保 ffmpeg.exe 所在目录已添加到系统 PATH 环境变量。
-        echo 安装完成后，重新双击本程序。
+        echo [ERROR] Failed to install Git automatically.
+        echo Please download and install manually from https://git-scm.com/downloads
+        echo After installation, double-click this file again.
         pause
         exit /b 1
     )
     echo.
-    echo [完成] FFmpeg 安装成功！
+    echo [OK] Git installed successfully!
     set "NEED_RESTART=1"
 ) else (
-    echo [√] 已检测到 FFmpeg
+    echo [OK] Git detected
 )
 echo.
 
-:: 如果本次新安装了 Python 或 FFmpeg，需要重启才能生效
+:: Check FFmpeg
+ffmpeg -version >nul 2>&1
+if errorlevel 1 (
+    echo [INFO] FFmpeg not found (required for audio/video processing). Installing...
+    echo.
+    winget install -e --id Gyan.FFmpeg --accept-source-agreements --accept-package-agreements
+    if errorlevel 1 (
+        echo.
+        echo [ERROR] Failed to install FFmpeg automatically.
+        echo Please download and install manually from https://ffmpeg.org/download.html
+        echo Make sure ffmpeg.exe is added to your system PATH.
+        echo After installation, double-click this file again.
+        pause
+        exit /b 1
+    )
+    echo.
+    echo [OK] FFmpeg installed successfully!
+    set "NEED_RESTART=1"
+) else (
+    echo [OK] FFmpeg detected
+)
+echo.
+
+:: If anything was just installed, need to restart for PATH to take effect
 if "%NEED_RESTART%"=="1" (
     echo ================================================
-    echo   刚刚安装了新的组件，需要重新启动才能生效。
-    echo   请关闭此窗口，然后重新双击本程序。
+    echo   New components were installed. A restart is
+    echo   needed for changes to take effect.
+    echo   Please close this window and double-click
+    echo   this file again.
     echo ================================================
     pause
     exit /b 0
 )
 
 :: ============================================
-:: 第二步：下载项目文件（如果还没有）
+:: Step 2: Clone project repository
 :: ============================================
 
-if not exist "start.py" (
-    echo [1/4] 正在下载项目文件...
+if not exist "AI-Video-Transcriber" (
+    echo [1/4] Cloning project repository...
     echo.
-    powershell -Command ^
-        "Invoke-WebRequest -Uri 'https://github.com/wendy7756/AI-Video-Transcriber/archive/refs/heads/main.zip' -OutFile 'project.zip'; ^
-         Expand-Archive -Path 'project.zip' -DestinationPath '.' -Force; ^
-         Get-ChildItem 'AI-Video-Transcriber-main\*' | Move-Item -Destination '.' -Force; ^
-         Remove-Item 'AI-Video-Transcriber-main' -Force -ErrorAction SilentlyContinue; ^
-         Remove-Item 'project.zip' -Force"
-    if not exist "start.py" (
+    git clone https://github.com/wendy7756/AI-Video-Transcriber.git
+    if errorlevel 1 (
         echo.
-        echo [错误] 下载项目文件失败，请检查网络连接后重试。
+        echo [ERROR] Failed to clone repository. Please check your network connection.
         pause
         exit /b 1
     )
-    echo       完成！
+    echo.
+    echo       Done!
     echo.
 ) else (
-    echo [1/4] 项目文件已存在，跳过下载
+    echo [1/4] Project already exists, skipping clone
     echo.
 )
 
+cd AI-Video-Transcriber
+
 :: ============================================
-:: 第三步：创建虚拟环境并安装依赖
+:: Step 3: Create virtual environment and install dependencies
 :: ============================================
 
 if not exist "venv" (
-    echo [2/4] 正在创建专属运行环境...
+    echo [2/4] Creating virtual environment...
     %PYTHON_CMD% -m venv venv
     if errorlevel 1 (
         echo.
-        echo [错误] 创建虚拟环境失败，请检查 Python 是否安装完整。
+        echo [ERROR] Failed to create virtual environment. Please check Python installation.
         pause
         exit /b 1
     )
-    echo       完成！
+    echo       Done!
     echo.
 )
 
 call venv\Scripts\activate.bat
 
-echo [3/4] 正在安装依赖...
+echo [3/4] Installing dependencies...
 echo.
 echo ================================================
-echo   首次安装需要下载语音识别模型等依赖
-echo   可能需要 5-10 分钟，请耐心等待
-echo   请不要关闭此窗口！
+echo   First-time setup needs to download speech
+echo   recognition models and other packages.
+echo   This may take 5-10 minutes, please wait.
+echo   Do NOT close this window!
 echo ================================================
 echo.
 
 pip install -r requirements.txt
 if errorlevel 1 (
     echo.
-    echo [错误] 安装依赖失败。
-    echo 可能的原因：
-    echo   - 网络连接不稳定，请检查网络后重试
-    echo   - 磁盘空间不足，请确保至少有 2GB 可用空间
+    echo [ERROR] Failed to install dependencies.
+    echo Possible causes:
+    echo   - Unstable network connection, please check and retry
+    echo   - Insufficient disk space, at least 2GB free space required
     echo.
-    echo 你可以重新双击本程序再试一次。
+    echo You can double-click this file to try again.
     pause
     exit /b 1
 )
 
 echo.
-echo [√] 依赖安装完成！
+echo [OK] All dependencies installed!
 echo.
 
 :: ============================================
-:: 第四步：配置 API Key 并启动
+:: Step 4: Configure API Key and launch
 :: ============================================
 
-echo [4/4] 准备启动...
+echo [4/4] Preparing to launch...
 echo.
 echo ================================================
 echo.
-echo   关于 AI 摘要功能：
+echo   About AI Summary Feature:
 echo.
-echo   本工具的视频转录功能（语音转文字）无需任何配置，
-echo   开箱即用。
+echo   Video transcription (speech-to-text) works
+echo   out of the box, no configuration needed.
 echo.
-echo   但如果您想使用 AI 智能摘要功能，需要提供
-echo   OpenAI API Key。没有 Key 也完全可以用，
-echo   只是摘要功能不可用。
+echo   However, to use the AI-powered summary
+echo   feature, you need an OpenAI API Key.
+echo   Without a Key, the tool still works fine
+echo   for basic transcription.
 echo.
 echo ================================================
 echo.
 
 set "OPENAI_API_KEY="
-set /p "OPENAI_API_KEY=请输入 OpenAI API Key（没有的话直接按回车跳过）: "
+set /p "OPENAI_API_KEY=Enter your OpenAI API Key (or press Enter to skip): "
 echo.
 
 if defined OPENAI_API_KEY (
-    echo [√] 已设置 API Key，AI 摘要功能已启用
+    echo [OK] API Key set. AI summary feature enabled.
 ) else (
-    echo [提示] 未设置 API Key，将以基础模式运行（仅转录，无摘要）
+    echo [INFO] No API Key set. Running in basic mode (transcription only, no summary).
 )
 echo.
 
 echo ================================================
-echo   正在启动 AI Video Transcriber...
+echo   Starting AI Video Transcriber...
 echo.
-echo   正在打开浏览器... 如果没有自动打开，
-echo   请手动访问：http://localhost:8000
+echo   Opening browser... If it does not open
+echo   automatically, please visit:
+echo   http://localhost:8000
 echo.
-echo   关闭此黑色窗口即可停止程序。
+echo   Close this window to stop the application.
 echo ================================================
 echo.
 
