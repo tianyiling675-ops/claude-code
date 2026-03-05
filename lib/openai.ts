@@ -1,11 +1,14 @@
 import OpenAI from 'openai';
 import { SUMMARIZE_SYSTEM_PROMPT, OPENAI_MODEL, MAX_COMPLETION_TOKENS } from './prompts';
 
-if (!process.env.OPENAI_API_KEY) {
-  throw new Error('[lib/openai] Missing environment variable: OPENAI_API_KEY');
+if (!process.env.OPENROUTER_API_KEY) {
+  throw new Error('[lib/openai] Missing environment variable: OPENROUTER_API_KEY');
 }
 
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const client = new OpenAI({
+  apiKey: process.env.OPENROUTER_API_KEY,
+  baseURL: 'https://openrouter.ai/api/v1',
+});
 
 export interface GenerateSummaryResult {
   summary: string;

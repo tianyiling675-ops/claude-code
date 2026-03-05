@@ -47,5 +47,5 @@ Workflow:
 检查并移除所有非结构化文字，直接输出。
 `.trim();
 
-export const OPENAI_MODEL = 'gpt-4o-mini';
+export const OPENAI_MODEL = 'openai/gpt-4o-mini';
 export const MAX_COMPLETION_TOKENS = 500;
